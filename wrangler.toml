@@ -1,4 +1,9 @@
 name = "solo-empire-insights"
-main = "worker.js"
-compatibility_date = "2024-01-01"
+# src/worker.ts wraps the generated page server (worker.js) with Sentry.
+main = "src/worker.ts"
+compatibility_date = "2026-09-01"
+# @sentry/cloudflare 11 imports node: built-ins (async_hooks, diagnostics_channel, ...).
+compatibility_flags = ["nodejs_compat"]
 account_id = "4a3ba0eee7dba5c9131a0d1ad3639114"
+
+# Optional secret, never stored here: `wrangler secret put SENTRY_DSN` (unset = Sentry off).

@@ -1,0 +1,27 @@
+{
+  "name": "market-insights-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "wrangler deploy --dry-run --outdir dist"
+  },
+  "overrides": {
+    "sharp": "0.35.5",
+    "undici": "7.29.1"
+  },
+  "dependencies": {
+    "@sentry/cloudflare": "11.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "wrangler": "4.131.1"
+  }
+}
