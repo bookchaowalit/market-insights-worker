@@ -1,29 +1,51 @@
 // Sentry settings for the Worker (@sentry/cloudflare).
-// Errors only: no tracing, no trace headers, no breadcrumbs, and an allowlist
-// so nothing from the visitor's request (URL, headers, IP, cookies) is sent.
+// Errors only: no tracing, no trace headers, no breadcrumbs. Allowlist scrubber:
+// the event is rebuilt from exception type, frame locations and runtime name/version.
+// This Worker throws no static messages of its own, so every exception value and
+// event message is sent as "[redacted]" (free text can carry the visitor's URL and
+// query string); linked cause errors keep their type only. Request, headers, IP,
+// cookies, user, tags, extra and frame locals are never sent.
 
-const EVENT_KEYS = new Set(['event_id', 'timestamp', 'platform', 'level', 'logger', 'release', 'environment', 'exception', 'message', 'tags', 'sdk', 'contexts']);
-const CONTEXT_KEYS = new Set(['runtime', 'cloud_resource']);
-const FRAME_KEYS = new Set(['filename', 'function', 'module', 'lineno', 'colno', 'in_app']);
+export const REDACTED = '[redacted]';
 
-type Frame = Record<string, unknown>;
-type ScrubbableEvent = Record<string, unknown> & {
-  contexts?: Record<string, unknown>;
-  exception?: { values?: { stacktrace?: { frames?: Frame[] } }[] };
-};
+type Json = Record<string, unknown>;
+
+const EVENT_FIELDS = ['event_id', 'timestamp', 'platform', 'level', 'logger', 'release', 'environment'] as const;
+const FRAME_FIELDS = ['filename', 'function', 'module', 'lineno', 'colno', 'in_app'] as const;
+
+const isRecord = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function pick(source: Json, fields: readonly string[]): Json {
+  const out: Json = {};
+  for (const field of fields) if (source[field] !== undefined) out[field] = source[field];
+  return out;
+}
+
+function scrubException(value: unknown): Json | null {
+  if (!isRecord(value)) return null;
+  const out = pick(value, ['type']);
+  const mechanism = isRecord(value.mechanism) ? value.mechanism : undefined;
+  const isCause = mechanism?.type === 'chained' || mechanism?.source !== undefined;
+  if (value.value !== undefined && !isCause) out.value = REDACTED;
+  if (mechanism) out.mechanism = pick(mechanism, ['type', 'handled']);
+  if (isRecord(value.stacktrace) && Array.isArray(value.stacktrace.frames)) {
+    out.stacktrace = { frames: value.stacktrace.frames.filter(isRecord).map((frame) => pick(frame, FRAME_FIELDS)) };
+  }
+  return out;
+}
 
 export function scrubEvent<T extends object>(input: T): T {
-  const event = input as ScrubbableEvent;
-  for (const key of Object.keys(event)) if (!EVENT_KEYS.has(key)) delete event[key];
-  if (event.contexts) {
-    for (const key of Object.keys(event.contexts)) if (!CONTEXT_KEYS.has(key)) delete event.contexts[key];
+  const source = input as Json;
+  const out = pick(source, EVENT_FIELDS);
+  if (source.message !== undefined) out.message = REDACTED;
+  if (isRecord(source.exception) && Array.isArray(source.exception.values)) {
+    out.exception = { values: source.exception.values.map(scrubException).filter((v): v is Json => v !== null) };
   }
-  for (const value of event.exception?.values ?? []) {
-    for (const frame of value.stacktrace?.frames ?? []) {
-      for (const key of Object.keys(frame)) if (!FRAME_KEYS.has(key)) delete frame[key];
-    }
+  if (isRecord(source.contexts) && isRecord(source.contexts.runtime)) {
+    out.contexts = { runtime: pick(source.contexts.runtime, ['name', 'version']) };
   }
-  return input;
+  if (isRecord(source.sdk)) out.sdk = pick(source.sdk, ['name', 'version']);
+  return out as T;
 }
 
 export function sentryOptions(env: { SENTRY_DSN?: string }) {
@@ -35,5 +57,6 @@ export function sentryOptions(env: { SENTRY_DSN?: string }) {
     tracePropagationTargets: [] as string[],
     maxBreadcrumbs: 0,
     beforeSend: scrubEvent,
+    beforeSendTransaction: () => null,
   };
 }

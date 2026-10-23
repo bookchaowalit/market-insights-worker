@@ -18,7 +18,7 @@ The owner: a free-hosted place to read the dashboards that the scrapers produce.
 | Fallback | any unknown path returns the overview page with status `200` and no cache header (soft 404; pinned by a test, not changed) |
 | Generation | `worker.js` is written by `scripts/publish_pages.py` in `bookchaowalit/career-job-scraper` (`--generate-only`), then copied here |
 | Entry | `src/worker.ts` wraps the generated worker; `wrangler.toml` points `main` at it |
-| Error reporting | Sentry (`@sentry/cloudflare`) when the `SENTRY_DSN` secret is set; errors only, events reduced to an allowlist (no URL, headers or IP) |
+| Error reporting | Sentry (`@sentry/cloudflare`) when the `SENTRY_DSN` secret is set; errors only, events rebuilt from an allowlist: exception type and frame locations, every message sent as `[redacted]`, no URL, headers, IP, tags or cause values |
 | Checks | `npm run typecheck` (strict), `npm test` (4 files in `tests/`), `npm run build` (Wrangler dry-run bundle); shared CI on every push |
 
 ## How to run
