@@ -32,3 +32,26 @@ test('events keep only allowlisted fields: no request, user, IP, extra or frame 
   assert.deepEqual(Object.keys(event.contexts as object), ['runtime']);
   assert.doesNotMatch(JSON.stringify(event), /1\.2\.3\.4|a@b\.c|cookie|vars/);
 });
+
+test('exception and event messages are redacted (this Worker throws no static app messages); type is kept', () => {
+  const event = scrubEvent({
+    message: 'GET /jobs?email=a@b.c failed',
+    exception: {
+      values: [
+        { type: 'TypeError', value: "Cannot read properties of undefined (reading 'https://insights.example/jobs?email=a@b.c')" },
+        { type: 'Error', value: 'cause text', mechanism: { type: 'chained', source: 'cause', handled: true } },
+      ],
+    },
+  }) as { message?: string; exception: { values: { type?: string; value?: string }[] } };
+  assert.equal(event.message, '[redacted]');
+  assert.deepEqual(event.exception.values.map((v) => [v.type, v.value]), [['TypeError', '[redacted]'], ['Error', undefined]]);
+});
+
+test('tags and cloud_resource context are dropped; runtime keeps only name and version', () => {
+  const event = scrubEvent({
+    tags: { url: 'https://insights.example/jobs?email=a@b.c' },
+    contexts: { runtime: { name: 'cloudflare', version: '1', extra: 'x' }, cloud_resource: { 'cloud.region': 'SIN', 'host.id': 'h-1' } },
+  }) as Record<string, unknown>;
+  assert.equal(event.tags, undefined);
+  assert.deepEqual(event.contexts, { runtime: { name: 'cloudflare', version: '1' } });
+});
